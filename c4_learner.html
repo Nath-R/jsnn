@@ -1,0 +1,537 @@
+<html>
+<head>
+<title>Connect 4</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<meta name="author" content="Nathan Ramoly">
+
+<style>
+
+table
+{
+	border-spacing: 0px;
+	border-collapse: collapse;
+}
+
+button
+{
+	width: 100px;
+}
+
+</style>
+
+
+</head>
+
+<body>
+
+<div id="choice">
+<table>
+	<td>
+		<tr> <button type="button" onclick="human_choice(0)"> V </button> </tr>
+		<tr> <button type="button" onclick="human_choice(1)"> V </button> </tr>
+		<tr> <button type="button" onclick="human_choice(2)"> V </button> </tr>
+		<tr> <button type="button" onclick="human_choice(3)"> V </button> </tr>
+		<tr> <button type="button" onclick="human_choice(4)"> V </button> </tr>
+		<tr> <button type="button" onclick="human_choice(5)"> V </button> </tr>
+		<tr> <button type="button" onclick="human_choice(6)"> V </button> </tr>
+	</td>
+</table>
+</div>
+
+<div id="board">
+</div>
+
+
+
+<script src="weight.js"></script>
+<script src="neuron.js"></script>
+<script src="neuronLayer.js"></script>
+<script src="neuronNetwork.js"></script>
+
+<script type="text/javascript">
+
+/** POWER 4 ENGINE & ANN TRAINER **/
+
+//Board, array of double dimension ( [row][line] ), from left to right and bottom to top
+//Dimension 6*7
+//0: empty;  1: player 1; 2: player 2
+var board;
+//Init
+board = new Array(7);
+for(var i=0; i<7; i++)
+{
+	board[i] = new Array(6);
+	for(var j=0; j<6; j++)
+	{
+		board[i][j] = 0;
+	}
+}
+
+//For human choice management
+var choiceNeeded;
+var choiceDone;
+var choice;
+
+//Meta game management
+var game_nbr = 0;
+var run_size = 10; //10 by 10 to select the weight
+var max_game_nbr = 1000;
+
+//ANN management
+var nnStruct = [84, 84, 7];
+var listSize = 10;
+var threshold = 0.3;
+var nnList = new Array(listSize);
+var nnScore = new Array(listSize);
+
+//Number of turn of a game
+var turn = 0;
+//Number of failed turn, to select the next choice. Reset between each turn
+var failed_turn = 0;
+
+//Methods
+
+/**
+ * Reinit the list of neural network
+ */
+ function init_ann()
+ {
+	for(var i=0; i<listSize; i++)
+	{
+		var weightSet = new Weight();
+		weightSet.init_random(nnStruct);
+		
+		nnList[i] = new NeuronNetwork();
+		nnList[i].init(weightSet, threshold);
+		
+		nnScore[i] = 0;
+	}
+ }
+ 
+/**
+ * Select the best previous ann and create the new generation.
+ */
+ function new_generation()
+ {
+	var bestAnn = 0;
+ 
+	for(var i=0; i<listSize; i++)
+	{
+		if( nnScore[i] > nnScore[bestAnn] )
+		{
+			bestAnn = i;
+		}
+	}
+	
+	//Create the new generation...
+	//Two first are the two previous best
+	var ann = nnList[bestAnn];
+	nnList[0] = ann;
+	nnList[1] = ann;
+	
+	//The rest: evolution of the two other
+	for(var i=2; i<listSize; i++)
+	{
+		var weightSet = new Weight();
+		weightSet.init_evolve(ann.get_weights().serialize() , 0.25);
+		
+		nnList[i] = new NeuronNetwork();
+		nnList[i].init(weightSet, threshold);
+	}
+	
+	//Clear the score
+	for(var i=0; i<listSize; i++)
+	{
+		nnScore[i] = 0;
+	}
+ }
+ 
+ /**
+  * Get the current best ann
+  */
+ function get_best_ann()
+ {
+	var bestAnn = 0;
+ 
+	for(var i=0; i<listSize; i++)
+	{
+		if( nnScore[i] > nnScore[bestAnn] )
+		{
+			bestAnn = i;
+		}
+	}
+	
+	return nnList[bestAnn];
+ }
+ 
+/**
+ * Reinit the board
+ */
+ function init_board()
+ {
+	for(var i=0; i<7; i++)
+	{		
+		for(var j=0; j<6; j++)
+		{
+			board[i][j] = 0;
+		}
+	}
+	
+	//Reprint
+	print_board();
+ }
+ 
+
+/** 
+ * Putting a token in the wanted row for a given player
+ * return true if token has been added, false otherwise. 
+ */
+function add_token( player, row )
+{
+	if( !(player == 1 || player == 2) || row < 0 || row > 6 )
+	{return false;}
+	
+	//Going through from the bottom to the top and taking the first empty one
+	for(var i=0; i<6; i++)
+	{
+		if( board[row][i] == 0 )
+		{ 
+			board[row][i] = player; 
+			return true;			
+		}		
+	}
+	
+	//No room for a new token !
+	return false;
+}
+
+/**
+ * Print the power 4 board as a table in html
+ */
+ function print_board()
+ {
+	var html = "";
+	
+	html += "<table>";
+		
+	//Going though line
+	for(var l=5; l>=0; l--)
+	{
+		html += "<tr>";
+	
+		//Going though column
+		for(var c=0; c<7; c++)
+		{
+			html += "<td>";
+			
+			if(board[c][l]==1)
+			{ html += "<img src='images/p4_red.png' width=100 height=100>"; }
+			else if(board[c][l]==2)
+			{ html += "<img src='images/p4_yellow.png' width=100 height=100>"; }
+			else
+			{ html += "<img src='images/p4_empty.png' width=100 height=100>"; }
+						
+			html += "</td>";
+		}
+		
+		html += "</tr>";
+	}
+	
+	html += "</table>";
+	
+	//Dispplay
+	document.getElementById('board').innerHTML = html;	
+	
+ }
+ 
+ /**
+  * Run a power 4 run
+  */
+ function connect4()
+ {
+	//Init 
+	init_board();
+	
+	//Turn number
+	turn = 0;
+	
+	//Start the main loop...
+	setTimeout(next_turn, 0);
+ }
+ 
+ /**
+  * End of the game
+  */
+ function connect4_end( res )
+ {	
+	//Compute score of the current ann:  score = number max of turn less the number of turn needed, inverses if defeat.
+	nnScore[(game_nbr % run_size)] = (42 - turn) * Math.pow(-1, res);
+	
+	console.log(res+" en "+turn+" tours, score: "+nnScore[(game_nbr % run_size)]);
+	game_nbr++;
+	
+	if( (game_nbr % run_size) != 0 )
+	{ connect4(); }
+	else
+	{ end_run(); }
+ }
+  
+ 
+ /**
+  * Do the next turn
+  */
+ function next_turn()
+ {
+	//Do one turn..
+	player = turn%2 + 1;
+	
+	//Get movement
+	if(player == 1)
+	{ request_random_choice(); }
+	else if(player == 2)
+	{ request_ann_choice(); }	
+ }
+ 
+ function end_turn()
+ {
+	var turnOk = add_token(player, choice);
+	
+	//Restart turn if not valid
+	if(!turnOk)
+	{ 
+		failed_turn++;
+		setTimeout(next_turn, 0); 
+	}
+	else
+	{
+		turn++;
+	
+		failed_turn = 0;
+	
+		print_board();
+		
+		//Check if over or not
+		var res = check(choice);
+		if( res == -1) // not finished
+		{ setTimeout(next_turn, 0); }
+		else
+		{ connect4_end(res); }
+	}
+ }
+  
+ 
+ /**
+  * Wait for a human choice
+  */
+ function request_human_choice()
+ {
+	choiceNeeded = true;
+ }
+ 
+ /**
+  * A random choice
+  */
+ function request_random_choice()
+ {
+	choice = Math.floor( Math.random()*7 );
+	setTimeout(end_turn, 100);
+ }
+ 
+ /**
+  * Use the neural network to make a choice
+  */
+ function request_ann_choice()
+ {
+	//Setting the input array
+	var inputArray = new Array(84);
+	for(var i=0; i<42; i++)
+	{
+		var content = board[Math.floor(i/7)][i%7]
+		if(content == 1)
+		{ inputArray[i] = 1; }
+		else
+		{ inputArray[i] = 0; }
+		
+		if(content == 2)
+		{ inputArray[42+i] = 1; }
+		else
+		{ inputArray[42+i] = 0; }
+	}
+	
+	var resList = nnList[(game_nbr % run_size)].compute_result(inputArray);
+	
+	//Sorting the list, then read from the last one. To get the position we go thorugh the previous list and compare with the selected value
+	var sortedList = resList.slice(0);
+	sortedList.sort();
+		
+	choice = 0;	
+	
+	for(var i=0; i<7; i++)
+	{
+		if( resList[i] == sortedList[6-failed_turn] )
+		{
+			prev_value = resList[i];
+			choice = i;
+		}
+	}
+	
+	setTimeout(end_turn, 100);
+ }
+ 
+ /**
+  * A human choice
+  * Not used in this training program
+  */
+ function human_choice(row)
+ {	
+	if(choiceNeeded)
+	{
+		choiceNeeded = false;
+		choice = row;
+		setTimeout(end_turn, 0);
+	}
+ }
+ 
+ /**
+  * Check if the game is over or not.
+  * It take the last row selected (and find the line by taking the first one from the top)
+  * return -1 if not ended, 0 if draw, 1 if player 1 won, 2 if player 2 won
+  */
+ function check(lastRow)
+ {
+	var row = lastRow;
+	var line;
+	var found = false;
+	var team = 0; //Team to check
+	var count = 0; //to count the rumbered of aligned token
+	
+	//Finding the last ligne
+	for(var i=5; i>=0 && !found; i--)
+	{
+		if(board[row][i] != 0)
+		{
+			line = i;
+			team = board[row][i];
+			found = true;
+		}
+	}
+	
+	//ERROR
+	if(team == 0)
+	{ alert("Unable to check !"); return; }
+	
+	//Check horizontally
+	count = 0;
+	for(var i=0; i<7; i++)
+	{
+		if(board[i][line] == team)
+		{ count++; }
+		else
+		{ count = 0; }
+		
+		if(count >= 4)
+		{ return team; }
+	}
+	
+	//Check vertically
+	count = 0;
+	for(var i=0; i<7; i++)
+	{
+		if(board[row][i] == team)
+		{ count++; }
+		else
+		{ count = 0; }
+		
+		if(count >= 4)
+		{ return team; }
+	}
+	
+	//Check diagonal (left to right)
+	//Taking a start (out of the board, but osef)
+	//Not opitimized, but idgaf (diagonal, mas lenght: 6)
+	var step = Math.min( (row),( 5 - line) );
+	var startRow = row - step;
+	var startLine = line + step;
+	count = 0;
+	for(var i=0; i<6; i++)
+	{
+		if( 0 <= startRow+i && startRow+i < 7 && 0 <= startLine-i && startLine-i < 6 )
+		{
+			if(board[startRow+i][startLine-i] == team)
+			{ count++; }
+			else
+			{ count = 0; }
+			
+			if(count >= 4)
+			{ return team; }
+		}
+	}
+	
+	//Diagonal ( right to left)
+	step = Math.min( (6-row),(5-line) );
+	startRow = row + step;
+	startLine = line + step;
+	count = 0;
+	for(var i=0; i<6; i++)
+	{
+		if( 0 <= startRow-i && startRow-i < 7 && 0 <= startLine-i && startLine-i < 6 )
+		{
+			if(board[startRow-i][startLine-i] == team)
+			{ count++; }
+			else
+			{ count = 0; }
+			
+			if(count >= 4)
+			{ return team; }
+		}
+	}
+	
+	
+	//Check if all token has been set
+	if(turn >= 42)
+	{ return 0; }
+	
+	//It's not over yet !!
+	return -1;
+ }
+ 
+ /**
+  * Management between too run:
+  * Make the ann evolve by taking the better one.
+  */
+ function end_run()
+ {
+	console.log("Run ended...")
+	//Check the score for each one
+	//And get the most efficient set
+	
+	
+	//Launch next run
+	if( game_nbr < max_game_nbr )
+	{
+		new_generation();
+		connect4();
+	}
+	else
+	{
+		alert("Training done, see the console to get the current ANN");
+		//Return current ANN
+		console.log( get_best_ann().get_weights().serialize() );
+	}
+ }
+ 
+ //First display
+ print_board();
+ 
+ //First ann set
+ init_ann();
+ 
+ //Launching the first game
+ connect4();
+
+</script>
+
+
+
+</body>
+</html>
